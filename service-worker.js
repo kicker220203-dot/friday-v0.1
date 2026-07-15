@@ -1,30 +1,43 @@
-const CACHE = "friday-v0-1-1-cache-v1";
-const ASSETS = [
-  "./",
-  "./index.html",
-  "./style.css",
-  "./app.js",
-  "./manifest.json",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png"
-];
+# Пятница v0.2.0 PWA
 
-self.addEventListener("install", event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));
-  self.skipWaiting();
-});
+Версия v0.2.0 добавляет голосовое управление и голосовые ответы без большой AI-модели.
 
-self.addEventListener("activate", event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))
-    )
-  );
-  self.clients.claim();
-});
+## Что есть
 
-self.addEventListener("fetch", event => {
-  event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
-  );
-});
+- двойной тап запускает распознавание голосовой команды;
+- Пятница отвечает голосом;
+- меню → «Слушать команду»;
+- меню → «Тест голоса»;
+- визуальное состояние listening;
+- визуальное состояние speaking;
+- команды:
+  - спать;
+  - проснись;
+  - тихий режим;
+  - обычный режим;
+  - который час;
+  - какое сегодня число;
+  - открой меню;
+  - закрой меню;
+  - стоп / замолчи / тихо / хватит;
+  - тест голоса;
+  - Вторник.
+
+## Важно
+
+Это PWA. На iPhone распознавание речи может зависеть от Safari, версии iOS и разрешения микрофона.
+
+Если голос не работает:
+1. Открой сайт именно в Safari.
+2. Разреши доступ к микрофону.
+3. Попробуй не с иконки, а напрямую из Safari.
+4. Обнови страницу.
+5. Удали старую иконку с экрана и добавь заново.
+
+## Как обновить GitHub Pages
+
+1. Распакуй архив.
+2. Загрузи содержимое папки `friday_v0_2_0_pwa` в корень репозитория с заменой старых файлов.
+3. Commit changes.
+4. Подожди 1–3 минуты.
+5. На iPhone обнови сайт.

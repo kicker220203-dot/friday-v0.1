@@ -1,55 +1,430 @@
-<!doctype html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-  <meta name="theme-color" content="#000000" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="Пятница" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Пятница v0.1.1</title>
-  <link rel="manifest" href="./manifest.json" />
-  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <link rel="stylesheet" href="./style.css" />
-</head>
-<body>
-  <main id="stage" aria-label="Пятница v0.1.1">
-    <section id="face" class="face idle">
-      <div class="eyes-wrap" id="eyesWrap">
-        <div class="eye left-eye" data-eye="left">
-          <div class="glow"></div>
-          <div class="lid top"></div>
-          <div class="lid bottom"></div>
-        </div>
-        <div class="eye right-eye" data-eye="right">
-          <div class="glow"></div>
-          <div class="lid top"></div>
-          <div class="lid bottom"></div>
-        </div>
-      </div>
-    </section>
+const face = document.getElementById("face");
+const eyesWrap = document.getElementById("eyesWrap");
+const menu = document.getElementById("menu");
+const menuCard = document.getElementById("menuCard");
+const toast = document.getElementById("toast");
 
-    <aside id="menu" class="menu hidden" aria-hidden="true">
-      <div class="menu-card" id="menuCard" role="dialog" aria-label="Меню Пятницы">
-        <div class="menu-title">Пятница v0.1.1</div>
-        <div class="menu-subtitle">Служебное меню прототипа</div>
+let quietMode = false;
+let isSleeping = false;
+let isListening = false;
+let isSpeaking = false;
+let pokeCount = 0;
 
-        <button type="button" data-action="wake">Внимание</button>
-        <button type="button" data-action="idle">Обычный режим</button>
-        <button type="button" data-action="quiet">Тихий режим</button>
-        <button type="button" data-action="sleep">Спать</button>
-        <button type="button" data-action="tuesday">Preview Вторника</button>
-        <button type="button" data-action="about">О прототипе</button>
+let longPressTimer = null;
+let toastTimer = null;
+let idleTimer = null;
+let blinkTimer = null;
+let pokeWindowTimer = null;
+let singleTapTimer = null;
+let pressStart = null;
+let longPressTriggered = false;
+let ignoreNextClickUntil = 0;
 
-        <div class="menu-divider"></div>
+const DOUBLE_TAP_DELAY = 285;
+const LONG_PRESS_DELAY = 620;
+const MOVE_CANCEL_DISTANCE = 14;
 
-        <button type="button" data-action="close">Закрыть</button>
-      </div>
-    </aside>
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let voices = [];
 
-    <aside id="toast" class="toast hidden" aria-live="polite"></aside>
-  </main>
+const messages = {
+  tap: ["Да?", "Слушаю.", "Я здесь.", "М?"],
+  poke: ["Ай. Условно.", "Макс, это было лично.", "Я, конечно, ИИ, но осуждаю.", "Ты сейчас проверяешь сенсор или моё терпение?"],
+  annoyed: ["Макс, экран работает.", "Я поняла. Сенсор жив.", "Ещё немного — и я начну моргать из принципа."],
+  sleep: ["Ушла в сон.", "Спящий режим.", "Буду тихой."],
+  wake: ["Уже здесь.", "Слушаю.", "Проснулась."],
+  menu: ["Меню.", "Служебный режим.", "Открыла меню."],
+  noSpeech: ["Не расслышала.", "Повтори, пожалуйста.", "Я не поняла последнюю часть."]
+};
 
-  <script src="./app.js"></script>
-</body>
-</html>
+function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
+function menuOpen() { return !menu.classList.contains("hidden"); }
+
+function showToast(text, ms = 1500) {
+  if (!text) return;
+  toast.textContent = text;
+  toast.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.add("hidden"), ms);
+}
+
+function setState(next) {
+  face.className = "face";
+  if (quietMode) face.classList.add("quiet");
+  if (next === "sleeping") face.classList.add("sleeping");
+  if (next === "attentive") face.classList.add("attentive");
+  if (next === "listening") face.classList.add("listening");
+  if (next === "speaking") face.classList.add("speaking");
+  if (next === "annoyed") face.classList.add("annoyed");
+  if (next === "happy") face.classList.add("happy");
+  if (next === "confused") face.classList.add("confused");
+  if (next === "tuesday") face.classList.add("tuesday");
+  if (next === "idle") face.classList.add("idle");
+}
+
+function blink() {
+  if (isSleeping || menuOpen() || isListening || isSpeaking) return;
+  face.classList.add("blink");
+  setTimeout(() => face.classList.remove("blink"), 180);
+}
+
+function scheduleBlink() {
+  clearTimeout(blinkTimer);
+  blinkTimer = setTimeout(() => { blink(); scheduleBlink(); }, 2400 + Math.random() * 4800);
+}
+
+function idleMove() {
+  if (isSleeping || menuOpen() || isListening || isSpeaking) return;
+  const x = (Math.random() - 0.5) * 22;
+  const y = (Math.random() - 0.5) * 10;
+  const s = 0.98 + Math.random() * 0.045;
+  eyesWrap.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${s})`;
+  setTimeout(() => {
+    if (!isSleeping && !menuOpen()) eyesWrap.style.transform = "";
+  }, 1200 + Math.random() * 1200);
+}
+
+function scheduleIdle() {
+  clearTimeout(idleTimer);
+  const delay = quietMode ? 28000 + Math.random() * 30000 : 12000 + Math.random() * 24000;
+  idleTimer = setTimeout(() => { idleMove(); scheduleIdle(); }, delay);
+}
+
+function loadVoices() {
+  if ("speechSynthesis" in window) voices = window.speechSynthesis.getVoices();
+}
+
+if ("speechSynthesis" in window) {
+  loadVoices();
+  window.speechSynthesis.onvoiceschanged = loadVoices;
+}
+
+function findFridayVoice() {
+  if (!voices.length) loadVoices();
+  const ru = voices.filter(v => (v.lang || "").toLowerCase().startsWith("ru"));
+  const hints = ["milena", "alena", "anna", "elena", "katya", "oksana", "female", "russian", "рус"];
+  return ru.find(v => hints.some(h => (v.name || "").toLowerCase().includes(h))) || ru[0] || voices[0] || null;
+}
+
+function speak(text, options = {}) {
+  return new Promise(resolve => {
+    if (!("speechSynthesis" in window)) {
+      showToast("Голосовой ответ недоступен.", 1800);
+      resolve();
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "ru-RU";
+      u.rate = options.rate || 1.04;
+      u.pitch = options.pitch || 1.08;
+      u.volume = quietMode ? 0.52 : 1;
+      const voice = findFridayVoice();
+      if (voice) u.voice = voice;
+
+      u.onstart = () => {
+        isSpeaking = true;
+        if (!isSleeping && !menuOpen()) setState("speaking");
+      };
+      u.onend = () => {
+        isSpeaking = false;
+        if (!isSleeping && !menuOpen() && !isListening) setState("idle");
+        resolve();
+      };
+      u.onerror = () => {
+        isSpeaking = false;
+        if (!isSleeping && !menuOpen() && !isListening) setState("idle");
+        resolve();
+      };
+      window.speechSynthesis.speak(u);
+    } catch {
+      showToast("Ошибка голосового ответа.", 1600);
+      resolve();
+    }
+  });
+}
+
+function stopListeningOnly() {
+  try { if (recognition && isListening) recognition.stop(); } catch {}
+  isListening = false;
+}
+
+function stopAllVoice() {
+  stopListeningOnly();
+  try { if ("speechSynthesis" in window) window.speechSynthesis.cancel(); } catch {}
+  isSpeaking = false;
+  if (!isSleeping && !menuOpen()) setState("idle");
+}
+
+function openMenu() {
+  clearTimeout(singleTapTimer);
+  stopListeningOnly();
+  if (isSleeping) wake(false);
+  menu.classList.remove("hidden");
+  menu.setAttribute("aria-hidden", "false");
+  setState("idle");
+  speak(pick(messages.menu));
+}
+
+function closeMenu() {
+  menu.classList.add("hidden");
+  menu.setAttribute("aria-hidden", "true");
+  if (!isSleeping) setState("idle");
+}
+
+function sleep(showMessage = true) {
+  closeMenu();
+  stopListeningOnly();
+  isSleeping = true;
+  setState("sleeping");
+  if (showMessage) speak(pick(messages.sleep));
+}
+
+function wake(showMessage = true) {
+  isSleeping = false;
+  setState("attentive");
+  if (showMessage) speak(pick(messages.wake));
+  setTimeout(() => {
+    if (!isSleeping && !menuOpen() && !isListening && !isSpeaking) setState("idle");
+  }, 1600);
+}
+
+function singleTap(target) {
+  if (isListening || isSpeaking) return;
+  if (isSleeping) { wake(); return; }
+  if (target.closest(".eye")) { pokeReaction(); return; }
+  setState("attentive");
+  setTimeout(() => {
+    if (!isSleeping && !menuOpen() && !isListening && !isSpeaking) setState("idle");
+  }, 1200);
+}
+
+function doubleTap() {
+  if (isSleeping) { wake(); return; }
+  startListening();
+}
+
+function handleTapCandidate(target) {
+  if (menuOpen() || longPressTriggered) return;
+  if (singleTapTimer) {
+    clearTimeout(singleTapTimer);
+    singleTapTimer = null;
+    doubleTap();
+    return;
+  }
+  singleTapTimer = setTimeout(() => {
+    singleTapTimer = null;
+    singleTap(target);
+  }, DOUBLE_TAP_DELAY);
+}
+
+function pokeReaction() {
+  pokeCount += 1;
+  clearTimeout(pokeWindowTimer);
+  pokeWindowTimer = setTimeout(() => pokeCount = 0, 15000);
+
+  if (pokeCount >= 9) {
+    setState("annoyed");
+    speak("Ладно. Игнорирую.");
+    setTimeout(() => sleep(false), 900);
+    setTimeout(() => { if (isSleeping) wake(false); pokeCount = 0; }, 3600);
+    return;
+  }
+
+  if (pokeCount >= 6) { setState("annoyed"); speak(pick(messages.annoyed)); }
+  else if (pokeCount >= 3) { setState("confused"); speak("Макс, я поняла. Экран работает."); }
+  else { setState("happy"); speak(pick(messages.poke)); }
+
+  setTimeout(() => { if (!isSleeping && !menuOpen() && !isSpeaking) setState("idle"); }, 1500);
+}
+
+function switchTuesdayPreview() {
+  if (isSleeping) wake(false);
+  closeMenu();
+  stopListeningOnly();
+  face.classList.add("glitch");
+  setTimeout(() => {
+    face.classList.remove("glitch");
+    setState("tuesday");
+    speak("Вторник пока только визуальный режим.");
+    setTimeout(() => { if (!isSleeping && !menuOpen() && !isSpeaking) setState("idle"); }, 2600);
+  }, 420);
+}
+
+function setupRecognition() {
+  if (!SpeechRecognition) return null;
+  const rec = new SpeechRecognition();
+  rec.lang = "ru-RU";
+  rec.continuous = false;
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+
+  rec.onstart = () => {
+    isListening = true;
+    if (!isSleeping && !menuOpen()) setState("listening");
+  };
+
+  rec.onresult = event => {
+    const transcript = Array.from(event.results)
+      .map(r => r[0]?.transcript || "")
+      .join(" ")
+      .trim()
+      .toLowerCase();
+    isListening = false;
+    if (!transcript) { setState("confused"); speak(pick(messages.noSpeech)); return; }
+    handleVoiceCommand(transcript);
+  };
+
+  rec.onerror = event => {
+    isListening = false;
+    if (!isSleeping && !menuOpen()) setState("confused");
+    if (event.error === "not-allowed" || event.error === "service-not-allowed") speak("Мне нужен доступ к микрофону.");
+    else if (event.error === "no-speech") speak(pick(messages.noSpeech));
+    else speak("Голосовое управление сейчас не сработало.");
+  };
+
+  rec.onend = () => {
+    isListening = false;
+    if (!isSleeping && !menuOpen() && !isSpeaking) setState("idle");
+  };
+  return rec;
+}
+
+function startListening() {
+  if (!SpeechRecognition) { setState("confused"); speak("Голосовое управление недоступно в этом браузере."); return; }
+  if (isSleeping) wake(false);
+  closeMenu();
+  try {
+    if (!recognition) recognition = setupRecognition();
+    if (!recognition) return;
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    isSpeaking = false;
+    setState("listening");
+    recognition.start();
+  } catch {
+    isListening = false;
+    setState("confused");
+    speak("Я уже слушаю или микрофон занят.");
+  }
+}
+
+function normalize(text) {
+  return text.replace(/[.,!?;:]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+}
+function includesAny(text, words) { return words.some(w => text.includes(w)); }
+function getTimeText() { return new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }); }
+function getDateText() { return new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long" }); }
+
+function handleVoiceCommand(raw) {
+  const text = normalize(raw);
+
+  if (includesAny(text, ["стоп", "замолчи", "тихо", "остановись", "хватит"])) { stopAllVoice(); return; }
+  if (includesAny(text, ["спать", "усни", "засыпай", "сон"])) { sleep(); return; }
+  if (includesAny(text, ["проснись", "проснуться", "вставай"])) { wake(); return; }
+  if (includesAny(text, ["тихий режим", "потише"])) { quietMode = true; setState("idle"); speak("Тихий режим."); return; }
+  if (includesAny(text, ["обычный режим", "нормальный режим"])) { quietMode = false; setState("idle"); speak("Обычный режим."); return; }
+  if (includesAny(text, ["который час", "сколько времени", "время"])) { speak(getTimeText()); return; }
+  if (includesAny(text, ["какое сегодня число", "сегодня число", "какая дата", "дата"])) { speak(getDateText()); return; }
+  if (includesAny(text, ["открой меню", "меню"])) { openMenu(); return; }
+  if (includesAny(text, ["закрой меню", "закрыть меню", "закрой"])) { closeMenu(); speak("Закрыла."); return; }
+  if (includesAny(text, ["вторник"])) { switchTuesdayPreview(); return; }
+  if (includesAny(text, ["тест голоса", "проверка голоса"])) { speak("Голос Пятницы работает. Пока без большой модели, но уже не молчу."); return; }
+  if (text === "пятница" || text.endsWith(" пятница")) { setState("attentive"); speak(pick(messages.tap)); return; }
+
+  setState("confused");
+  speak("Пока не умею это выполнять. Я понимаю сон, пробуждение, режимы, время, дату, меню и стоп.");
+}
+
+function menuAction(action) {
+  if (action === "close") closeMenu();
+  if (action === "listen") { closeMenu(); startListening(); }
+  if (action === "voice-test") { closeMenu(); speak("Слушаю, Макс. Голосовой ответ работает."); }
+  if (action === "wake") { closeMenu(); wake(); }
+  if (action === "idle") { quietMode = false; closeMenu(); setState("idle"); speak("Обычный режим."); }
+  if (action === "quiet") { quietMode = true; closeMenu(); setState("idle"); speak("Тихий режим."); }
+  if (action === "sleep") sleep();
+  if (action === "tuesday") switchTuesdayPreview();
+  if (action === "about") speak("Версия ноль два ноль. Голосовое управление без искусственного интеллекта.");
+}
+
+["contextmenu", "selectstart", "dragstart"].forEach(eventName => {
+  document.addEventListener(eventName, event => event.preventDefault());
+});
+
+menu.addEventListener("pointerdown", event => {
+  event.preventDefault();
+  if (event.target === menu) closeMenu();
+}, { passive: false });
+
+menuCard.addEventListener("pointerdown", event => { event.stopPropagation(); }, { passive: false });
+menuCard.addEventListener("click", event => {
+  event.stopPropagation();
+  const btn = event.target.closest("button");
+  if (!btn) return;
+  menuAction(btn.dataset.action);
+});
+menu.addEventListener("click", event => { if (event.target === menu) closeMenu(); });
+
+document.addEventListener("pointerdown", event => {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  if (menuOpen()) return;
+  event.preventDefault();
+  longPressTriggered = false;
+  pressStart = { x: event.clientX, y: event.clientY, target: event.target };
+  clearTimeout(longPressTimer);
+  longPressTimer = setTimeout(() => {
+    longPressTriggered = true;
+    ignoreNextClickUntil = Date.now() + 650;
+    openMenu();
+    if (navigator.vibrate) navigator.vibrate(20);
+  }, LONG_PRESS_DELAY);
+}, { passive: false });
+
+document.addEventListener("pointermove", event => {
+  if (!pressStart) return;
+  const dx = event.clientX - pressStart.x;
+  const dy = event.clientY - pressStart.y;
+  if (Math.sqrt(dx * dx + dy * dy) > MOVE_CANCEL_DISTANCE) clearTimeout(longPressTimer);
+}, { passive: false });
+
+document.addEventListener("pointerup", event => {
+  if (!pressStart) return;
+  event.preventDefault();
+  clearTimeout(longPressTimer);
+  const target = pressStart.target;
+  pressStart = null;
+  if (Date.now() < ignoreNextClickUntil) { longPressTriggered = false; return; }
+  handleTapCandidate(target);
+}, { passive: false });
+
+document.addEventListener("pointercancel", () => { clearTimeout(longPressTimer); pressStart = null; }, { passive: false });
+document.addEventListener("click", event => {
+  if (Date.now() < ignoreNextClickUntil) { event.preventDefault(); event.stopPropagation(); }
+}, true);
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { clearTimeout(blinkTimer); clearTimeout(idleTimer); stopListeningOnly(); }
+  else { scheduleBlink(); scheduleIdle(); loadVoices(); }
+});
+
+window.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeMenu();
+  if (event.key.toLowerCase() === "m") openMenu();
+  if (event.key.toLowerCase() === "s") sleep();
+  if (event.key.toLowerCase() === "w") wake();
+  if (event.key.toLowerCase() === "l") startListening();
+});
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+  });
+}
+
+setState("idle");
+scheduleBlink();
+scheduleIdle();
+setTimeout(() => showToast("v0.2.0. Двойной тап — голосовая команда.", 2200), 700);
