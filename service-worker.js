@@ -1,4 +1,4 @@
-const CACHE = "friday-v0-1-cache-v1";
+const CACHE = "friday-v0-1-1-cache-v1";
 const ASSETS = [
   "./",
   "./index.html",

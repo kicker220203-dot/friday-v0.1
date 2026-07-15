@@ -1,19 +1,28 @@
 const face = document.getElementById("face");
 const eyesWrap = document.getElementById("eyesWrap");
 const menu = document.getElementById("menu");
+const menuCard = document.getElementById("menuCard");
 const toast = document.getElementById("toast");
 
 let state = "idle";
 let quietMode = false;
 let isSleeping = false;
-let tapCount = 0;
-let lastTapAt = 0;
+let pokeCount = 0;
+
 let longPressTimer = null;
 let toastTimer = null;
 let idleTimer = null;
 let blinkTimer = null;
 let pokeWindowTimer = null;
-let didLongPress = false;
+let singleTapTimer = null;
+
+let pressStart = null;
+let longPressTriggered = false;
+let ignoreNextClickUntil = 0;
+
+const DOUBLE_TAP_DELAY = 285;
+const LONG_PRESS_DELAY = 620;
+const MOVE_CANCEL_DISTANCE = 14;
 
 const messages = {
   tap: ["Да?", "Слушаю.", "Я здесь.", "М?"],
@@ -26,6 +35,10 @@ const messages = {
 
 function pick(list) {
   return list[Math.floor(Math.random() * list.length)];
+}
+
+function menuOpen() {
+  return !menu.classList.contains("hidden");
 }
 
 function showToast(text, ms = 1500) {
@@ -84,17 +97,13 @@ function scheduleIdle() {
   }, delay);
 }
 
-function menuOpen() {
-  return !menu.classList.contains("hidden");
-}
-
 function openMenu() {
-  didLongPress = true;
+  clearTimeout(singleTapTimer);
   if (isSleeping) wake(false);
   menu.classList.remove("hidden");
   menu.setAttribute("aria-hidden", "false");
   setState("idle");
-  showToast(pick(messages.menu), 1100);
+  showToast(pick(messages.menu), 900);
 }
 
 function closeMenu() {
@@ -119,36 +128,75 @@ function wake(showMessage = true) {
   }, 1600);
 }
 
-function attentive() {
-  if (isSleeping) return wake();
+function singleTap(target) {
+  if (isSleeping) {
+    wake();
+    return;
+  }
+
+  if (target.closest(".eye")) {
+    pokeReaction();
+    return;
+  }
+
   setState("attentive");
-  showToast(pick(messages.tap), 1000);
+  showToast(pick(messages.tap), 900);
   setTimeout(() => {
     if (!isSleeping && !menuOpen()) setState("idle");
-  }, 1600);
+  }, 1200);
+}
+
+function doubleTap() {
+  if (isSleeping) {
+    wake();
+    return;
+  }
+
+  setState("attentive");
+  showToast("Слушаю.", 1000);
+  if (navigator.vibrate) navigator.vibrate(18);
+
+  setTimeout(() => {
+    if (!isSleeping && !menuOpen()) setState("idle");
+  }, 1700);
+}
+
+function handleTapCandidate(target) {
+  if (menuOpen() || longPressTriggered) return;
+
+  if (singleTapTimer) {
+    clearTimeout(singleTapTimer);
+    singleTapTimer = null;
+    doubleTap();
+    return;
+  }
+
+  singleTapTimer = setTimeout(() => {
+    singleTapTimer = null;
+    singleTap(target);
+  }, DOUBLE_TAP_DELAY);
 }
 
 function pokeReaction() {
-  if (isSleeping) return wake();
-  tapCount += 1;
+  pokeCount += 1;
   clearTimeout(pokeWindowTimer);
-  pokeWindowTimer = setTimeout(() => tapCount = 0, 15000);
+  pokeWindowTimer = setTimeout(() => pokeCount = 0, 15000);
 
-  if (tapCount >= 9) {
+  if (pokeCount >= 9) {
     showToast("Ладно. Игнорирую.", 1400);
     setState("annoyed");
     setTimeout(() => sleep(false), 900);
     setTimeout(() => {
       if (isSleeping) wake(false);
-      tapCount = 0;
+      pokeCount = 0;
     }, 3600);
     return;
   }
 
-  if (tapCount >= 6) {
+  if (pokeCount >= 6) {
     setState("annoyed");
     showToast(pick(messages.annoyed), 1400);
-  } else if (tapCount >= 3) {
+  } else if (pokeCount >= 3) {
     setState("confused");
     showToast("Макс, я поняла. Экран работает.", 1300);
   } else {
@@ -161,51 +209,6 @@ function pokeReaction() {
   }, 1500);
 }
 
-function handleTap(event) {
-  if (didLongPress) {
-    didLongPress = false;
-    return;
-  }
-  if (menuOpen()) return;
-  const now = Date.now();
-  const delta = now - lastTapAt;
-  lastTapAt = now;
-
-  const target = event.target;
-  const touchedEye = target.closest && target.closest(".eye");
-
-  if (delta < 280) {
-    attentive();
-    return;
-  }
-
-  if (touchedEye) {
-    pokeReaction();
-    return;
-  }
-
-  if (isSleeping) wake();
-  else {
-    setState("attentive");
-    setTimeout(() => {
-      if (!isSleeping && !menuOpen()) setState("idle");
-    }, 800);
-  }
-}
-
-function startLongPress() {
-  didLongPress = false;
-  clearTimeout(longPressTimer);
-  longPressTimer = setTimeout(() => {
-    openMenu();
-    if (navigator.vibrate) navigator.vibrate(20);
-  }, 620);
-}
-
-function cancelLongPress() {
-  clearTimeout(longPressTimer);
-}
-
 function switchTuesdayPreview() {
   if (isSleeping) wake(false);
   closeMenu();
@@ -214,46 +217,130 @@ function switchTuesdayPreview() {
     face.classList.remove("glitch");
     setState("tuesday");
     showToast("Вторник пока только визуальный preview.", 1800);
-    setTimeout(() => setState("idle"), 2800);
+    setTimeout(() => {
+      if (!isSleeping && !menuOpen()) setState("idle");
+    }, 2600);
   }, 420);
 }
 
-menu.addEventListener("click", (e) => {
-  const btn = e.target.closest("button");
-  if (!btn) {
+function menuAction(action) {
+  if (action === "close") closeMenu();
+
+  if (action === "wake") {
     closeMenu();
-    return;
+    wake();
   }
 
-  const action = btn.dataset.action;
-  if (action === "close") closeMenu();
-  if (action === "wake") { closeMenu(); wake(); }
   if (action === "idle") {
     quietMode = false;
     closeMenu();
     setState("idle");
     showToast("Обычный режим.", 1100);
   }
+
   if (action === "quiet") {
     quietMode = true;
     closeMenu();
     setState("idle");
     showToast("Тихий режим.", 1100);
   }
+
   if (action === "sleep") sleep();
+
   if (action === "tuesday") switchTuesdayPreview();
-  if (action === "about") showToast("v0.1: лицо, касания, меню, сон. Без AI и голоса.", 2600);
+
+  if (action === "about") {
+    showToast("v0.1.1: исправлены double tap и меню.", 2600);
+  }
+}
+
+/* Защита от iOS text selection / copy menu */
+["contextmenu", "selectstart", "dragstart"].forEach(eventName => {
+  document.addEventListener(eventName, event => event.preventDefault());
 });
 
-menu.addEventListener("touchend", (e) => e.stopPropagation());
-menu.addEventListener("mouseup", (e) => e.stopPropagation());
+/* Меню: фон закрывает, карточка не закрывает, кнопки работают */
+menu.addEventListener("pointerdown", event => {
+  event.preventDefault();
+  if (event.target === menu) {
+    closeMenu();
+  }
+}, { passive: false });
 
-document.addEventListener("touchstart", startLongPress, { passive: true });
-document.addEventListener("touchmove", cancelLongPress, { passive: true });
-document.addEventListener("touchend", (e) => { cancelLongPress(); handleTap(e); }, { passive: true });
-document.addEventListener("mousedown", startLongPress);
-document.addEventListener("mousemove", cancelLongPress);
-document.addEventListener("mouseup", (e) => { cancelLongPress(); handleTap(e); });
+menuCard.addEventListener("pointerdown", event => {
+  event.stopPropagation();
+}, { passive: false });
+
+menuCard.addEventListener("click", event => {
+  event.stopPropagation();
+  const btn = event.target.closest("button");
+  if (!btn) return;
+  menuAction(btn.dataset.action);
+});
+
+menu.addEventListener("click", event => {
+  if (event.target === menu) closeMenu();
+});
+
+/* Основные касания через Pointer Events, чтобы не получать touch+mouse дубль */
+document.addEventListener("pointerdown", event => {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+
+  if (menuOpen()) return;
+
+  event.preventDefault();
+  longPressTriggered = false;
+  pressStart = { x: event.clientX, y: event.clientY, target: event.target };
+
+  clearTimeout(longPressTimer);
+  longPressTimer = setTimeout(() => {
+    longPressTriggered = true;
+    ignoreNextClickUntil = Date.now() + 650;
+    openMenu();
+    if (navigator.vibrate) navigator.vibrate(20);
+  }, LONG_PRESS_DELAY);
+}, { passive: false });
+
+document.addEventListener("pointermove", event => {
+  if (!pressStart) return;
+
+  const dx = event.clientX - pressStart.x;
+  const dy = event.clientY - pressStart.y;
+  const moved = Math.sqrt(dx * dx + dy * dy);
+
+  if (moved > MOVE_CANCEL_DISTANCE) {
+    clearTimeout(longPressTimer);
+  }
+}, { passive: false });
+
+document.addEventListener("pointerup", event => {
+  if (!pressStart) return;
+
+  event.preventDefault();
+  clearTimeout(longPressTimer);
+
+  const target = pressStart.target;
+  pressStart = null;
+
+  if (Date.now() < ignoreNextClickUntil) {
+    longPressTriggered = false;
+    return;
+  }
+
+  handleTapCandidate(target);
+}, { passive: false });
+
+document.addEventListener("pointercancel", () => {
+  clearTimeout(longPressTimer);
+  pressStart = null;
+}, { passive: false });
+
+document.addEventListener("click", event => {
+  if (Date.now() < ignoreNextClickUntil) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+}, true);
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
@@ -265,11 +352,11 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closeMenu();
-  if (e.key.toLowerCase() === "m") openMenu();
-  if (e.key.toLowerCase() === "s") sleep();
-  if (e.key.toLowerCase() === "w") wake();
+window.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeMenu();
+  if (event.key.toLowerCase() === "m") openMenu();
+  if (event.key.toLowerCase() === "s") sleep();
+  if (event.key.toLowerCase() === "w") wake();
 });
 
 if ("serviceWorker" in navigator) {
@@ -281,4 +368,4 @@ if ("serviceWorker" in navigator) {
 setState("idle");
 scheduleBlink();
 scheduleIdle();
-setTimeout(() => showToast("Долгое нажатие — меню.", 1800), 700);
+setTimeout(() => showToast("v0.1.1. Долгое нажатие — меню.", 1900), 700);

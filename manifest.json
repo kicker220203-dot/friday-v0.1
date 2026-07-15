@@ -1,7 +1,7 @@
 {
-  "name": "Пятница v0.1",
+  "name": "Пятница v0.1.1",
   "short_name": "Пятница",
-  "description": "PWA-прототип настольного ИИ-агента Пятница v0.1",
+  "description": "PWA-прототип настольного ИИ-агента Пятница v0.1.1",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "landscape",
