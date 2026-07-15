@@ -1,0 +1,17 @@
+{
+  "version": "v0.5-web",
+  "build": "05web",
+  "features": [
+    "face",
+    "touch",
+    "voice_output",
+    "voice_control",
+    "voice_session",
+    "timers",
+    "local_memory",
+    "modes",
+    "tuesday_lite",
+    "menu_panels"
+  ],
+  "ai": "disabled_requires_backend_proxy"
+}

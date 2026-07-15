@@ -1,8 +1,8 @@
 {
-  "name": "Пятница v0.2.4-dev",
+  "name": "Пятница v0.5-web",
   "short_name": "Пятница",
-  "description": "PWA-прототип Пятницы v0.2.4-dev с диагностикой голоса и микрофона",
-  "start_url": "./index.html?v=024dev",
+  "description": "Максимальная PWA-версия Пятницы без внешнего AI: голос, таймеры, память, режимы, Вторник Lite",
+  "start_url": "./index.html?v=05web",
   "display": "standalone",
   "orientation": "landscape",
   "background_color": "#000000",

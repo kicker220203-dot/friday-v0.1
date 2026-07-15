@@ -7,17 +7,20 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Пятница" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Пятница v0.2.4-dev</title>
-  <link rel="manifest" href="./manifest.json?v=024dev" />
+  <title>Пятница v0.5-web</title>
+  <link rel="manifest" href="./manifest.json?v=05web" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <link rel="stylesheet" href="./style.css?v=024dev" />
+  <link rel="stylesheet" href="./style.css?v=05web" />
 </head>
 <body>
   <main id="stage">
     <section id="voiceGate" class="voice-gate">
       <div class="voice-card">
-        <div class="voice-title">Голос Пятницы</div>
-        <div class="voice-text">Нажми кнопку один раз. Это разблокирует голос на iPhone и подготовит микрофон.</div>
+        <div class="voice-title">Пятница v0.5-web</div>
+        <div class="voice-text">
+          Нажми «Включить голос». Это разблокирует голос на iPhone.
+          После этого двойной тап запускает голосовую команду.
+        </div>
         <button type="button" id="unlockVoiceBtn">Включить голос</button>
         <button type="button" id="skipVoiceBtn" class="secondary">Продолжить без разблокировки</button>
       </div>
@@ -25,31 +28,66 @@
 
     <section id="face" class="face idle">
       <div class="eyes-wrap" id="eyesWrap">
-        <div class="eye left-eye" data-eye="left"><div class="glow"></div><div class="lid top"></div><div class="lid bottom"></div><div class="listen-ring"></div></div>
-        <div class="eye right-eye" data-eye="right"><div class="glow"></div><div class="lid top"></div><div class="lid bottom"></div><div class="listen-ring"></div></div>
+        <div class="eye left-eye" data-eye="left">
+          <div class="glow"></div>
+          <div class="lid top"></div>
+          <div class="lid bottom"></div>
+          <div class="listen-ring"></div>
+        </div>
+        <div class="eye right-eye" data-eye="right">
+          <div class="glow"></div>
+          <div class="lid top"></div>
+          <div class="lid bottom"></div>
+          <div class="listen-ring"></div>
+        </div>
       </div>
     </section>
 
     <aside id="menu" class="menu hidden" aria-hidden="true">
       <div class="menu-card" id="menuCard" role="dialog" aria-label="Меню Пятницы">
-        <div class="menu-title">Пятница v0.2.4-dev</div>
-        <div class="menu-subtitle">Голос + диагностика микрофона</div>
+        <div class="menu-title">Пятница v0.5-web</div>
+        <div class="menu-subtitle">Голос • Таймеры • Память • Вторник Lite</div>
+
         <button type="button" data-action="listen">Слушать команду</button>
         <button type="button" data-action="mic-test">Тест микрофона</button>
         <button type="button" data-action="voice-test">Тест голоса</button>
+
+        <div class="menu-divider"></div>
+
+        <button type="button" data-action="abilities">Что ты умеешь</button>
+        <button type="button" data-action="memory">Память</button>
+        <button type="button" data-action="timers">Таймеры</button>
+        <button type="button" data-action="tuesday">Вторник Lite</button>
+
+        <div class="menu-divider"></div>
+
         <button type="button" data-action="wake">Внимание</button>
         <button type="button" data-action="idle">Обычный режим</button>
+        <button type="button" data-action="work">Рабочий режим</button>
         <button type="button" data-action="quiet">Тихий режим</button>
         <button type="button" data-action="sleep">Спать</button>
-        <button type="button" data-action="tuesday">Preview Вторника</button>
-        <button type="button" data-action="reset">Сбросить зависание</button>
-        <button type="button" data-action="about">О прототипе</button>
+
         <div class="menu-divider"></div>
+
+        <button type="button" data-action="reset">Сбросить зависание</button>
+        <button type="button" data-action="about">О версии</button>
         <button type="button" data-action="close">Закрыть</button>
       </div>
     </aside>
+
+    <aside id="panel" class="panel hidden" aria-hidden="true">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div id="panelTitle" class="panel-title">Панель</div>
+          <button type="button" id="panelClose" class="panel-close">Закрыть</button>
+        </div>
+        <div id="panelContent" class="panel-content"></div>
+      </div>
+    </aside>
+
     <aside id="toast" class="toast hidden" aria-live="polite"></aside>
   </main>
-  <script src="./app.js?v=024dev"></script>
+
+  <script src="./app.js?v=05web"></script>
 </body>
 </html>
