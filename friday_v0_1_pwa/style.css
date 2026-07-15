@@ -1,0 +1,309 @@
+:root {
+  --bg: #000000;
+  --eye: #41c7ff;
+  --eye2: #7fe4ff;
+  --deep: #0b6dff;
+  --menu-bg: rgba(12, 18, 28, 0.86);
+  --menu-border: rgba(126, 228, 255, 0.25);
+  --text: rgba(230, 250, 255, 0.92);
+  --muted: rgba(230, 250, 255, 0.62);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+  touch-action: manipulation;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(0, 60, 100, 0.10), transparent 42%),
+    #000;
+  overflow: hidden;
+}
+
+.face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transition: filter 600ms ease, opacity 600ms ease;
+}
+
+.eyes-wrap {
+  display: flex;
+  gap: clamp(44px, 8vw, 96px);
+  align-items: center;
+  justify-content: center;
+  transform: translate3d(0, 0, 0) scale(1);
+  transition: transform 420ms cubic-bezier(.2, .9, .2, 1), opacity 600ms ease;
+  will-change: transform;
+}
+
+.eye {
+  position: relative;
+  width: clamp(96px, 18vw, 190px);
+  height: clamp(56px, 10vw, 112px);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(255,255,255,0.95) 0 6%, transparent 7%),
+    radial-gradient(circle at 50% 45%, var(--eye2) 0 20%, var(--eye) 34%, #0782c8 62%, rgba(3, 34, 60, 0.95) 100%);
+  box-shadow:
+    0 0 18px rgba(65, 199, 255, 0.95),
+    0 0 44px rgba(65, 199, 255, 0.40),
+    inset 0 -12px 28px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  transform: translate3d(0,0,0);
+  transition:
+    height 240ms ease,
+    width 240ms ease,
+    border-radius 240ms ease,
+    filter 300ms ease,
+    opacity 300ms ease,
+    transform 300ms ease,
+    background 300ms ease,
+    box-shadow 300ms ease;
+}
+
+.eye::before {
+  content: "";
+  position: absolute;
+  inset: 12% 16% 48% 16%;
+  border-radius: 999px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.34), transparent);
+  filter: blur(0.5px);
+}
+
+.eye::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  border-radius: inherit;
+  background: radial-gradient(circle at 50% 45%, transparent 28%, rgba(255,255,255,0.15) 42%, transparent 58%);
+  opacity: 0.55;
+  mix-blend-mode: screen;
+}
+
+.glow {
+  position: absolute;
+  inset: -30%;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(65,199,255,0.35), transparent 64%);
+  filter: blur(12px);
+  pointer-events: none;
+}
+
+.lid {
+  position: absolute;
+  left: -4%;
+  width: 108%;
+  height: 54%;
+  background: #000;
+  z-index: 5;
+  transition: transform 170ms ease;
+}
+
+.lid.top {
+  top: -54%;
+  border-radius: 0 0 999px 999px;
+}
+
+.lid.bottom {
+  bottom: -54%;
+  border-radius: 999px 999px 0 0;
+}
+
+.face.blink .lid.top,
+.face.sleeping .lid.top {
+  transform: translateY(96%);
+}
+
+.face.blink .lid.bottom,
+.face.sleeping .lid.bottom {
+  transform: translateY(-96%);
+}
+
+.face.sleeping .eyes-wrap {
+  opacity: 0.10;
+  transform: translate3d(0, 6px, 0) scale(0.86);
+}
+
+.face.sleeping .eye {
+  height: clamp(6px, 1.5vw, 14px);
+  filter: brightness(0.36);
+  box-shadow: 0 0 10px rgba(65, 199, 255, 0.22);
+}
+
+.face.attentive .eyes-wrap {
+  transform: translate3d(0, -4px, 0) scale(1.05);
+}
+
+.face.attentive .eye {
+  filter: brightness(1.12);
+  box-shadow:
+    0 0 22px rgba(65, 199, 255, 1),
+    0 0 62px rgba(65, 199, 255, 0.52),
+    inset 0 -10px 24px rgba(0, 0, 0, 0.24);
+}
+
+.face.quiet .eyes-wrap {
+  transform: translate3d(0, 3px, 0) scale(0.94);
+}
+
+.face.quiet .eye {
+  filter: brightness(0.62) saturate(0.82);
+  box-shadow:
+    0 0 12px rgba(65, 199, 255, 0.50),
+    0 0 28px rgba(65, 199, 255, 0.20);
+}
+
+.face.annoyed .eye {
+  height: clamp(36px, 6vw, 72px);
+  filter: brightness(0.82) saturate(1.2);
+}
+
+.face.happy .eye {
+  height: clamp(52px, 9vw, 104px);
+  border-radius: 999px 999px 65% 65%;
+  filter: brightness(1.2);
+}
+
+.face.confused .left-eye {
+  transform: translateY(-6px) scaleY(0.88);
+}
+
+.face.confused .right-eye {
+  transform: translateY(5px) scaleY(1.04);
+}
+
+.face.tuesday .eye {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(255,255,255,0.92) 0 5%, transparent 6%),
+    radial-gradient(circle at 50% 45%, #b6d0ff 0 16%, var(--deep) 34%, #00368c 62%, rgba(0, 15, 38, 0.98) 100%);
+  box-shadow:
+    0 0 18px rgba(20, 110, 255, 0.92),
+    0 0 46px rgba(20, 110, 255, 0.36),
+    inset 0 -12px 28px rgba(0, 0, 0, 0.40);
+}
+
+.face.glitch .eyes-wrap {
+  animation: glitch 420ms steps(2, end);
+}
+
+@keyframes glitch {
+  0% { transform: translate(0,0) scale(1); filter: hue-rotate(0deg); }
+  20% { transform: translate(-7px,2px) scale(1.02); filter: hue-rotate(20deg); }
+  40% { transform: translate(6px,-2px) scale(.98); filter: hue-rotate(-20deg); }
+  60% { transform: translate(-3px,1px) scale(1.01); }
+  100% { transform: translate(0,0) scale(1); }
+}
+
+.hint,
+.toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  text-align: center;
+  pointer-events: none;
+}
+
+.hint {
+  bottom: max(20px, env(safe-area-inset-bottom));
+  font-size: 14px;
+}
+
+.toast {
+  bottom: max(28px, env(safe-area-inset-bottom));
+  max-width: min(86vw, 620px);
+  padding: 10px 14px;
+  border: 1px solid rgba(126, 228, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(8, 14, 24, 0.70);
+  backdrop-filter: blur(14px);
+  font-size: clamp(13px, 2vw, 16px);
+  opacity: 1;
+  transition: opacity 260ms ease, transform 260ms ease;
+  z-index: 20;
+}
+
+.hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.menu {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0,0,0,0.58);
+  backdrop-filter: blur(12px);
+  z-index: 10;
+}
+
+.menu-card {
+  width: min(86vw, 440px);
+  padding: 18px;
+  border-radius: 26px;
+  border: 1px solid var(--menu-border);
+  background: var(--menu-bg);
+  box-shadow: 0 20px 80px rgba(0,0,0,0.55), 0 0 48px rgba(65,199,255,0.10);
+}
+
+.menu-title {
+  padding: 6px 4px 14px;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+button {
+  width: 100%;
+  display: block;
+  margin: 8px 0;
+  border: 1px solid rgba(126, 228, 255, 0.18);
+  border-radius: 18px;
+  padding: 14px 16px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  background: rgba(255,255,255,0.045);
+}
+
+button:active {
+  background: rgba(65, 199, 255, 0.16);
+  transform: scale(0.99);
+}
+
+@media (orientation: portrait) {
+  .eyes-wrap {
+    transform: rotate(0deg) scale(0.92);
+  }
+
+  .eye {
+    width: clamp(92px, 28vw, 170px);
+    height: clamp(54px, 16vw, 104px);
+  }
+}
