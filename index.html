@@ -554,7 +554,7 @@ function menuAction(action) {
   if (action === "quiet") { quietMode = true; menu.classList.add("hidden"); menu.setAttribute("aria-hidden", "true"); setState("idle"); speak("Тихий режим."); return; }
   if (action === "sleep") { sleep(); return; }
   if (action === "tuesday") { switchTuesdayPreview(); return; }
-  if (action === "about") { menu.classList.add("hidden"); menu.setAttribute("aria-hidden", "true"); speak("Версия ноль два два. Добавлена разблокировка голоса на айфоне."); return; }
+  if (action === "about") { menu.classList.add("hidden"); menu.setAttribute("aria-hidden", "true"); speak("Версия ноль два три дев. Добавлена разблокировка голоса на айфоне."); return; }
 }
 
 ["contextmenu", "selectstart", "dragstart"].forEach(eventName => {
@@ -679,15 +679,29 @@ if (skipVoiceBtn) {
   }, { passive: false });
 }
 
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
-  });
+
+
+/* DEV: отключаем service worker и чистим кэши, чтобы iPhone не держал старую версию */
+async function disableDevCache() {
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(reg => reg.unregister()));
+    }
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(key => caches.delete(key)));
+    }
+  } catch (err) {
+    console.log("Dev cache cleanup skipped", err);
+  }
 }
+
+disableDevCache();
 
 setState("idle");
 scheduleBlink();
 scheduleIdle();
 setTimeout(() => {
-  showToast("v0.2.2. Нажми «Включить голос».", 2200);
+  showToast("v0.2.3-dev. Нажми «Включить голос».", 2200);
 }, 700);

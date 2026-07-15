@@ -1,20 +1,18 @@
-# Пятница v0.2.2 PWA
+// v0.2.3-dev self-destruct service worker
+self.addEventListener("install", event => {
+  self.skipWaiting();
+});
 
-Исправление для iPhone: добавлена явная разблокировка голоса.
+self.addEventListener("activate", event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(key => caches.delete(key)));
+    await self.registration.unregister();
+    const clientsList = await self.clients.matchAll({ type: "window" });
+    for (const client of clientsList) client.navigate(client.url);
+  })());
+});
 
-## Что изменилось
-
-- при запуске появляется экран «Включить голос»;
-- кнопка запускает SpeechSynthesis прямо из пользовательского тапа;
-- добавлен `speechSynthesis.resume()` и keep-alive во время речи;
-- если iPhone блокирует голос, Пятница снова покажет кнопку разблокировки;
-- версия и cache обновлены до v0.2.2.
-
-## Как тестировать
-
-1. Открой сайт именно в Safari.
-2. Нажми «Включить голос».
-3. Должна прозвучать фраза «Голос включён».
-4. После этого попробуй одиночный тап, двойной тап и «Тест голоса» в меню.
-
-Если в Safari голос заработал, а с иконки нет — это ограничение PWA/standalone-режима iOS. Тогда пока тестируем голос из Safari, а финально переносим в нативное iOS-приложение.
+self.addEventListener("fetch", event => {
+  event.respondWith(fetch(event.request));
+});
