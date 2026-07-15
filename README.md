@@ -1,7 +1,7 @@
 {
-  "name": "Пятница v0.2.0",
+  "name": "Пятница v0.2.2",
   "short_name": "Пятница",
-  "description": "PWA-прототип настольного ИИ-агента Пятница v0.2.0 с голосовым управлением",
+  "description": "PWA-прототип Пятницы v0.2.2 с разблокировкой голоса на iPhone",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "landscape",

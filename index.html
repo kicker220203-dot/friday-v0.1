@@ -3,6 +3,9 @@ const eyesWrap = document.getElementById("eyesWrap");
 const menu = document.getElementById("menu");
 const menuCard = document.getElementById("menuCard");
 const toast = document.getElementById("toast");
+const voiceGate = document.getElementById("voiceGate");
+const unlockVoiceBtn = document.getElementById("unlockVoiceBtn");
+const skipVoiceBtn = document.getElementById("skipVoiceBtn");
 
 let quietMode = false;
 let isSleeping = false;
@@ -16,6 +19,7 @@ let idleTimer = null;
 let blinkTimer = null;
 let pokeWindowTimer = null;
 let singleTapTimer = null;
+
 let pressStart = null;
 let longPressTriggered = false;
 let ignoreNextClickUntil = 0;
@@ -27,6 +31,8 @@ const MOVE_CANCEL_DISTANCE = 14;
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let voices = [];
+let voiceUnlocked = false;
+let speechKeepAliveTimer = null;
 
 const messages = {
   tap: ["Да?", "Слушаю.", "Я здесь.", "М?"],
@@ -35,11 +41,16 @@ const messages = {
   sleep: ["Ушла в сон.", "Спящий режим.", "Буду тихой."],
   wake: ["Уже здесь.", "Слушаю.", "Проснулась."],
   menu: ["Меню.", "Служебный режим.", "Открыла меню."],
-  noSpeech: ["Не расслышала.", "Повтори, пожалуйста.", "Я не поняла последнюю часть."]
+  noSpeech: ["Не расслышала.", "Повтори, пожалуйста.", "Я не поняла последнюю часть."],
 };
 
-function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
-function menuOpen() { return !menu.classList.contains("hidden"); }
+function pick(list) {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function menuOpen() {
+  return !menu.classList.contains("hidden");
+}
 
 function showToast(text, ms = 1500) {
   if (!text) return;
@@ -52,26 +63,22 @@ function showToast(text, ms = 1500) {
 function setState(next) {
   face.className = "face";
   if (quietMode) face.classList.add("quiet");
-  if (next === "sleeping") face.classList.add("sleeping");
-  if (next === "attentive") face.classList.add("attentive");
-  if (next === "listening") face.classList.add("listening");
-  if (next === "speaking") face.classList.add("speaking");
-  if (next === "annoyed") face.classList.add("annoyed");
-  if (next === "happy") face.classList.add("happy");
-  if (next === "confused") face.classList.add("confused");
-  if (next === "tuesday") face.classList.add("tuesday");
-  if (next === "idle") face.classList.add("idle");
+  if (next) face.classList.add(next);
 }
 
 function blink() {
-  if (isSleeping || menuOpen() || isListening || isSpeaking) return;
+  if (isSleeping || menuOpen() || isListening) return;
   face.classList.add("blink");
   setTimeout(() => face.classList.remove("blink"), 180);
 }
 
 function scheduleBlink() {
   clearTimeout(blinkTimer);
-  blinkTimer = setTimeout(() => { blink(); scheduleBlink(); }, 2400 + Math.random() * 4800);
+  const delay = 2400 + Math.random() * 4800;
+  blinkTimer = setTimeout(() => {
+    blink();
+    scheduleBlink();
+  }, delay);
 }
 
 function idleMove() {
@@ -88,11 +95,14 @@ function idleMove() {
 function scheduleIdle() {
   clearTimeout(idleTimer);
   const delay = quietMode ? 28000 + Math.random() * 30000 : 12000 + Math.random() * 24000;
-  idleTimer = setTimeout(() => { idleMove(); scheduleIdle(); }, delay);
+  idleTimer = setTimeout(() => {
+    idleMove();
+    scheduleIdle();
+  }, delay);
 }
 
 function loadVoices() {
-  if ("speechSynthesis" in window) voices = window.speechSynthesis.getVoices();
+  voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
 }
 
 if ("speechSynthesis" in window) {
@@ -102,61 +112,144 @@ if ("speechSynthesis" in window) {
 
 function findFridayVoice() {
   if (!voices.length) loadVoices();
-  const ru = voices.filter(v => (v.lang || "").toLowerCase().startsWith("ru"));
-  const hints = ["milena", "alena", "anna", "elena", "katya", "oksana", "female", "russian", "рус"];
-  return ru.find(v => hints.some(h => (v.name || "").toLowerCase().includes(h))) || ru[0] || voices[0] || null;
+  const ruVoices = voices.filter(v => (v.lang || "").toLowerCase().startsWith("ru"));
+  const femaleHints = ["milena", "alena", "anna", "elena", "female", "жен", "katya", "oksana", "russian"];
+  const preferred = ruVoices.find(v => femaleHints.some(h => (v.name || "").toLowerCase().includes(h)));
+  return preferred || ruVoices[0] || voices[0] || null;
+}
+
+function keepSpeechAlive() {
+  clearInterval(speechKeepAliveTimer);
+  speechKeepAliveTimer = setInterval(() => {
+    try {
+      if (window.speechSynthesis && window.speechSynthesis.speaking) {
+        window.speechSynthesis.resume();
+      } else {
+        clearInterval(speechKeepAliveTimer);
+      }
+    } catch {}
+  }, 250);
 }
 
 function speak(text, options = {}) {
   return new Promise(resolve => {
     if (!("speechSynthesis" in window)) {
-      showToast("Голосовой ответ недоступен.", 1800);
-      resolve();
+      showToast("Голос недоступен в этом браузере.", 2000);
+      resolve(false);
       return;
     }
 
     try {
       window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = "ru-RU";
-      u.rate = options.rate || 1.04;
-      u.pitch = options.pitch || 1.08;
-      u.volume = quietMode ? 0.52 : 1;
-      const voice = findFridayVoice();
-      if (voice) u.voice = voice;
+      window.speechSynthesis.resume();
 
-      u.onstart = () => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "ru-RU";
+      utterance.rate = options.rate || 1.0;
+      utterance.pitch = options.pitch || 1.04;
+      utterance.volume = quietMode ? 0.55 : 1;
+
+      const voice = findFridayVoice();
+      if (voice) utterance.voice = voice;
+
+      utterance.onstart = () => {
+        voiceUnlocked = true;
         isSpeaking = true;
-        if (!isSleeping && !menuOpen()) setState("speaking");
+        keepSpeechAlive();
+        if (!isSleeping && !menuOpen() && !isListening) setState("speaking");
       };
-      u.onend = () => {
+
+      utterance.onend = () => {
+        clearInterval(speechKeepAliveTimer);
         isSpeaking = false;
         if (!isSleeping && !menuOpen() && !isListening) setState("idle");
-        resolve();
+        resolve(true);
       };
-      u.onerror = () => {
+
+      utterance.onerror = () => {
+        clearInterval(speechKeepAliveTimer);
         isSpeaking = false;
         if (!isSleeping && !menuOpen() && !isListening) setState("idle");
-        resolve();
+        showToast("iPhone заблокировал голос. Нажми «Включить голос» ещё раз.", 2600);
+        if (voiceGate) voiceGate.classList.remove("hidden");
+        resolve(false);
       };
-      window.speechSynthesis.speak(u);
-    } catch {
+
+      showToast(text, 1800);
+      window.speechSynthesis.speak(utterance);
+      setTimeout(() => {
+        try { window.speechSynthesis.resume(); } catch {}
+      }, 0);
+    } catch (err) {
       showToast("Ошибка голосового ответа.", 1600);
-      resolve();
+      resolve(false);
     }
   });
 }
 
-function stopListeningOnly() {
-  try { if (recognition && isListening) recognition.stop(); } catch {}
-  isListening = false;
+function unlockVoice() {
+  if (!("speechSynthesis" in window)) {
+    showToast("Голос недоступен в этом браузере.", 2400);
+    return;
+  }
+
+  loadVoices();
+  try { window.speechSynthesis.cancel(); } catch {}
+  try { window.speechSynthesis.resume(); } catch {}
+
+  const test = new SpeechSynthesisUtterance("Голос включён.");
+  test.lang = "ru-RU";
+  test.rate = 1.0;
+  test.pitch = 1.04;
+  test.volume = 1;
+
+  const voice = findFridayVoice();
+  if (voice) test.voice = voice;
+
+  test.onstart = () => {
+    voiceUnlocked = true;
+    isSpeaking = true;
+    keepSpeechAlive();
+    setState("speaking");
+    showToast("Голос включён.", 1500);
+  };
+
+  test.onend = () => {
+    clearInterval(speechKeepAliveTimer);
+    isSpeaking = false;
+    if (voiceGate) voiceGate.classList.add("hidden");
+    if (!isSleeping && !menuOpen() && !isListening) setState("idle");
+  };
+
+  test.onerror = () => {
+    clearInterval(speechKeepAliveTimer);
+    isSpeaking = false;
+    showToast("Голос не запустился. Попробуй открыть сайт в Safari, не с иконки.", 3200);
+  };
+
+  window.speechSynthesis.speak(test);
+  setTimeout(() => {
+    try { window.speechSynthesis.resume(); } catch {}
+  }, 0);
 }
 
 function stopAllVoice() {
-  stopListeningOnly();
-  try { if ("speechSynthesis" in window) window.speechSynthesis.cancel(); } catch {}
+  try {
+    if (recognition && isListening) recognition.stop();
+  } catch {}
+  try {
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  } catch {}
+  isListening = false;
   isSpeaking = false;
   if (!isSleeping && !menuOpen()) setState("idle");
+}
+
+function stopListeningOnly() {
+  try {
+    if (recognition && isListening) recognition.stop();
+  } catch {}
+  isListening = false;
 }
 
 function openMenu() {
@@ -169,14 +262,16 @@ function openMenu() {
   speak(pick(messages.menu));
 }
 
-function closeMenu() {
+function closeMenu(silent = false) {
   menu.classList.add("hidden");
   menu.setAttribute("aria-hidden", "true");
   if (!isSleeping) setState("idle");
+  if (!silent) speak("Закрыла.");
 }
 
 function sleep(showMessage = true) {
-  closeMenu();
+  menu.classList.add("hidden");
+  menu.setAttribute("aria-hidden", "true");
   stopListeningOnly();
   isSleeping = true;
   setState("sleeping");
@@ -194,27 +289,38 @@ function wake(showMessage = true) {
 
 function singleTap(target) {
   if (isListening || isSpeaking) return;
-  if (isSleeping) { wake(); return; }
-  if (target.closest(".eye")) { pokeReaction(); return; }
+  if (isSleeping) {
+    wake();
+    return;
+  }
+
+  if (target.closest(".eye")) {
+    pokeReaction();
+    return;
+  }
+
   setState("attentive");
-  setTimeout(() => {
-    if (!isSleeping && !menuOpen() && !isListening && !isSpeaking) setState("idle");
-  }, 1200);
+  speak(pick(messages.tap));
 }
 
 function doubleTap() {
-  if (isSleeping) { wake(); return; }
+  if (isSleeping) {
+    wake();
+    return;
+  }
   startListening();
 }
 
 function handleTapCandidate(target) {
   if (menuOpen() || longPressTriggered) return;
+
   if (singleTapTimer) {
     clearTimeout(singleTapTimer);
     singleTapTimer = null;
     doubleTap();
     return;
   }
+
   singleTapTimer = setTimeout(() => {
     singleTapTimer = null;
     singleTap(target);
@@ -230,32 +336,66 @@ function pokeReaction() {
     setState("annoyed");
     speak("Ладно. Игнорирую.");
     setTimeout(() => sleep(false), 900);
-    setTimeout(() => { if (isSleeping) wake(false); pokeCount = 0; }, 3600);
+    setTimeout(() => {
+      if (isSleeping) wake(false);
+      pokeCount = 0;
+    }, 3600);
     return;
   }
 
-  if (pokeCount >= 6) { setState("annoyed"); speak(pick(messages.annoyed)); }
-  else if (pokeCount >= 3) { setState("confused"); speak("Макс, я поняла. Экран работает."); }
-  else { setState("happy"); speak(pick(messages.poke)); }
-
-  setTimeout(() => { if (!isSleeping && !menuOpen() && !isSpeaking) setState("idle"); }, 1500);
+  if (pokeCount >= 6) {
+    setState("annoyed");
+    speak(pick(messages.annoyed));
+  } else if (pokeCount >= 3) {
+    setState("confused");
+    speak("Макс, я поняла. Экран работает.");
+  } else {
+    setState("happy");
+    speak(pick(messages.poke));
+  }
 }
 
 function switchTuesdayPreview() {
   if (isSleeping) wake(false);
-  closeMenu();
+  menu.classList.add("hidden");
+  menu.setAttribute("aria-hidden", "true");
   stopListeningOnly();
   face.classList.add("glitch");
   setTimeout(() => {
     face.classList.remove("glitch");
     setState("tuesday");
     speak("Вторник пока только визуальный режим.");
-    setTimeout(() => { if (!isSleeping && !menuOpen() && !isSpeaking) setState("idle"); }, 2600);
+    setTimeout(() => {
+      if (!isSleeping && !menuOpen() && !isSpeaking) setState("idle");
+    }, 2600);
   }, 420);
+}
+
+function normalize(text) {
+  return text
+    .replace(/[.,!?;:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function includesAny(text, words) {
+  return words.some(word => text.includes(word));
+}
+
+function getTimeText() {
+  const now = new Date();
+  return now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+function getDateText() {
+  const now = new Date();
+  return now.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 }
 
 function setupRecognition() {
   if (!SpeechRecognition) return null;
+
   const rec = new SpeechRecognition();
   rec.lang = "ru-RU";
   rec.continuous = false;
@@ -265,89 +405,156 @@ function setupRecognition() {
   rec.onstart = () => {
     isListening = true;
     if (!isSleeping && !menuOpen()) setState("listening");
+    showToast("Слушаю...", 1200);
   };
 
   rec.onresult = event => {
     const transcript = Array.from(event.results)
-      .map(r => r[0]?.transcript || "")
+      .map(result => result[0]?.transcript || "")
       .join(" ")
       .trim()
       .toLowerCase();
+
     isListening = false;
-    if (!transcript) { setState("confused"); speak(pick(messages.noSpeech)); return; }
+
+    if (!transcript) {
+      setState("confused");
+      speak(pick(messages.noSpeech));
+      return;
+    }
+
     handleVoiceCommand(transcript);
   };
 
   rec.onerror = event => {
     isListening = false;
     if (!isSleeping && !menuOpen()) setState("confused");
-    if (event.error === "not-allowed" || event.error === "service-not-allowed") speak("Мне нужен доступ к микрофону.");
-    else if (event.error === "no-speech") speak(pick(messages.noSpeech));
-    else speak("Голосовое управление сейчас не сработало.");
+
+    if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+      speak("Мне нужен доступ к микрофону.");
+    } else if (event.error === "no-speech") {
+      speak(pick(messages.noSpeech));
+    } else {
+      speak("Голосовое управление сейчас не сработало.");
+    }
   };
 
   rec.onend = () => {
     isListening = false;
     if (!isSleeping && !menuOpen() && !isSpeaking) setState("idle");
   };
+
   return rec;
 }
 
 function startListening() {
-  if (!SpeechRecognition) { setState("confused"); speak("Голосовое управление недоступно в этом браузере."); return; }
+  if (!SpeechRecognition) {
+    setState("confused");
+    speak("Голосовое управление недоступно в этом браузере.");
+    return;
+  }
+
   if (isSleeping) wake(false);
-  closeMenu();
+  menu.classList.add("hidden");
+  menu.setAttribute("aria-hidden", "true");
+
   try {
     if (!recognition) recognition = setupRecognition();
     if (!recognition) return;
+
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     isSpeaking = false;
     setState("listening");
     recognition.start();
-  } catch {
+  } catch (err) {
     isListening = false;
     setState("confused");
     speak("Я уже слушаю или микрофон занят.");
   }
 }
 
-function normalize(text) {
-  return text.replace(/[.,!?;:]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
-}
-function includesAny(text, words) { return words.some(w => text.includes(w)); }
-function getTimeText() { return new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }); }
-function getDateText() { return new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long" }); }
-
 function handleVoiceCommand(raw) {
   const text = normalize(raw);
 
-  if (includesAny(text, ["стоп", "замолчи", "тихо", "остановись", "хватит"])) { stopAllVoice(); return; }
-  if (includesAny(text, ["спать", "усни", "засыпай", "сон"])) { sleep(); return; }
-  if (includesAny(text, ["проснись", "проснуться", "вставай"])) { wake(); return; }
-  if (includesAny(text, ["тихий режим", "потише"])) { quietMode = true; setState("idle"); speak("Тихий режим."); return; }
-  if (includesAny(text, ["обычный режим", "нормальный режим"])) { quietMode = false; setState("idle"); speak("Обычный режим."); return; }
-  if (includesAny(text, ["который час", "сколько времени", "время"])) { speak(getTimeText()); return; }
-  if (includesAny(text, ["какое сегодня число", "сегодня число", "какая дата", "дата"])) { speak(getDateText()); return; }
-  if (includesAny(text, ["открой меню", "меню"])) { openMenu(); return; }
-  if (includesAny(text, ["закрой меню", "закрыть меню", "закрой"])) { closeMenu(); speak("Закрыла."); return; }
-  if (includesAny(text, ["вторник"])) { switchTuesdayPreview(); return; }
-  if (includesAny(text, ["тест голоса", "проверка голоса"])) { speak("Голос Пятницы работает. Пока без большой модели, но уже не молчу."); return; }
-  if (text === "пятница" || text.endsWith(" пятница")) { setState("attentive"); speak(pick(messages.tap)); return; }
+  if (includesAny(text, ["стоп", "замолчи", "тихо", "остановись", "хватит"])) {
+    stopAllVoice();
+    return;
+  }
+
+  if (includesAny(text, ["спать", "усни", "засыпай", "сон"])) {
+    sleep();
+    return;
+  }
+
+  if (includesAny(text, ["проснись", "вставай"])) {
+    wake();
+    return;
+  }
+
+  if (includesAny(text, ["тихий режим", "потише"])) {
+    quietMode = true;
+    setState("idle");
+    speak("Тихий режим.");
+    return;
+  }
+
+  if (includesAny(text, ["обычный режим", "нормальный режим"])) {
+    quietMode = false;
+    setState("idle");
+    speak("Обычный режим.");
+    return;
+  }
+
+  if (includesAny(text, ["который час", "сколько времени", "время"])) {
+    speak(getTimeText());
+    return;
+  }
+
+  if (includesAny(text, ["какое сегодня число", "какая дата", "дата"])) {
+    speak(getDateText());
+    return;
+  }
+
+  if (includesAny(text, ["открой меню", "меню"])) {
+    openMenu();
+    return;
+  }
+
+  if (includesAny(text, ["закрой меню", "закрыть меню", "закрой"])) {
+    closeMenu();
+    return;
+  }
+
+  if (includesAny(text, ["вторник"])) {
+    switchTuesdayPreview();
+    return;
+  }
+
+  if (includesAny(text, ["тест голоса", "проверка голоса"])) {
+    speak("Голос Пятницы работает. Теперь я стараюсь все ответы говорить вслух.");
+    return;
+  }
+
+  if (text === "пятница" || text.endsWith(" пятница")) {
+    setState("attentive");
+    speak(pick(messages.tap));
+    return;
+  }
 
   setState("confused");
-  speak("Пока не умею это выполнять. Я понимаю сон, пробуждение, режимы, время, дату, меню и стоп.");
+  speak("Пока не умею это выполнять. Я понимаю сон, пробуждение, режимы, время, дату, меню, Вторник и стоп.");
 }
 
 function menuAction(action) {
-  if (action === "close") closeMenu();
-  if (action === "listen") { closeMenu(); startListening(); }
-  if (action === "voice-test") { closeMenu(); speak("Слушаю, Макс. Голосовой ответ работает."); }
-  if (action === "wake") { closeMenu(); wake(); }
-  if (action === "idle") { quietMode = false; closeMenu(); setState("idle"); speak("Обычный режим."); }
-  if (action === "quiet") { quietMode = true; closeMenu(); setState("idle"); speak("Тихий режим."); }
-  if (action === "sleep") sleep();
-  if (action === "tuesday") switchTuesdayPreview();
-  if (action === "about") speak("Версия ноль два ноль. Голосовое управление без искусственного интеллекта.");
+  if (action === "close") { closeMenu(); return; }
+  if (action === "listen") { menu.classList.add("hidden"); menu.setAttribute("aria-hidden", "true"); startListening(); return; }
+  if (action === "voice-test") { menu.classList.add("hidden"); menu.setAttribute("aria-hidden", "true"); speak("Слушаю, Макс. Голосовой ответ работает."); return; }
+  if (action === "wake") { menu.classList.add("hidden"); menu.setAttribute("aria-hidden", "true"); wake(); return; }
+  if (action === "idle") { quietMode = false; menu.classList.add("hidden"); menu.setAttribute("aria-hidden", "true"); setState("idle"); speak("Обычный режим."); return; }
+  if (action === "quiet") { quietMode = true; menu.classList.add("hidden"); menu.setAttribute("aria-hidden", "true"); setState("idle"); speak("Тихий режим."); return; }
+  if (action === "sleep") { sleep(); return; }
+  if (action === "tuesday") { switchTuesdayPreview(); return; }
+  if (action === "about") { menu.classList.add("hidden"); menu.setAttribute("aria-hidden", "true"); speak("Версия ноль два два. Добавлена разблокировка голоса на айфоне."); return; }
 }
 
 ["contextmenu", "selectstart", "dragstart"].forEach(eventName => {
@@ -356,24 +563,33 @@ function menuAction(action) {
 
 menu.addEventListener("pointerdown", event => {
   event.preventDefault();
-  if (event.target === menu) closeMenu();
+  if (event.target === menu) closeMenu(true);
 }, { passive: false });
 
-menuCard.addEventListener("pointerdown", event => { event.stopPropagation(); }, { passive: false });
+menuCard.addEventListener("pointerdown", event => {
+  event.stopPropagation();
+}, { passive: false });
+
 menuCard.addEventListener("click", event => {
   event.stopPropagation();
   const btn = event.target.closest("button");
   if (!btn) return;
   menuAction(btn.dataset.action);
 });
-menu.addEventListener("click", event => { if (event.target === menu) closeMenu(); });
+
+menu.addEventListener("click", event => {
+  if (event.target === menu) closeMenu(true);
+});
 
 document.addEventListener("pointerdown", event => {
   if (event.pointerType === "mouse" && event.button !== 0) return;
   if (menuOpen()) return;
+  if (voiceGate && !voiceGate.classList.contains("hidden")) return;
+
   event.preventDefault();
   longPressTriggered = false;
   pressStart = { x: event.clientX, y: event.clientY, target: event.target };
+
   clearTimeout(longPressTimer);
   longPressTimer = setTimeout(() => {
     longPressTriggered = true;
@@ -387,36 +603,81 @@ document.addEventListener("pointermove", event => {
   if (!pressStart) return;
   const dx = event.clientX - pressStart.x;
   const dy = event.clientY - pressStart.y;
-  if (Math.sqrt(dx * dx + dy * dy) > MOVE_CANCEL_DISTANCE) clearTimeout(longPressTimer);
+  const moved = Math.sqrt(dx * dx + dy * dy);
+  if (moved > MOVE_CANCEL_DISTANCE) clearTimeout(longPressTimer);
 }, { passive: false });
 
 document.addEventListener("pointerup", event => {
   if (!pressStart) return;
   event.preventDefault();
   clearTimeout(longPressTimer);
+
   const target = pressStart.target;
   pressStart = null;
-  if (Date.now() < ignoreNextClickUntil) { longPressTriggered = false; return; }
+
+  if (Date.now() < ignoreNextClickUntil) {
+    longPressTriggered = false;
+    return;
+  }
+
   handleTapCandidate(target);
 }, { passive: false });
 
-document.addEventListener("pointercancel", () => { clearTimeout(longPressTimer); pressStart = null; }, { passive: false });
+document.addEventListener("pointercancel", () => {
+  clearTimeout(longPressTimer);
+  pressStart = null;
+}, { passive: false });
+
 document.addEventListener("click", event => {
-  if (Date.now() < ignoreNextClickUntil) { event.preventDefault(); event.stopPropagation(); }
+  if (Date.now() < ignoreNextClickUntil) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
 }, true);
 
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) { clearTimeout(blinkTimer); clearTimeout(idleTimer); stopListeningOnly(); }
-  else { scheduleBlink(); scheduleIdle(); loadVoices(); }
+  if (document.hidden) {
+    clearTimeout(blinkTimer);
+    clearTimeout(idleTimer);
+    stopListeningOnly();
+  } else {
+    scheduleBlink();
+    scheduleIdle();
+    loadVoices();
+  }
 });
 
 window.addEventListener("keydown", event => {
-  if (event.key === "Escape") closeMenu();
+  if (event.key === "Escape") closeMenu(true);
   if (event.key.toLowerCase() === "m") openMenu();
   if (event.key.toLowerCase() === "s") sleep();
   if (event.key.toLowerCase() === "w") wake();
   if (event.key.toLowerCase() === "l") startListening();
 });
+
+
+if (unlockVoiceBtn) {
+  unlockVoiceBtn.addEventListener("pointerup", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    unlockVoice();
+  }, { passive: false });
+
+  unlockVoiceBtn.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    unlockVoice();
+  });
+}
+
+if (skipVoiceBtn) {
+  skipVoiceBtn.addEventListener("pointerup", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (voiceGate) voiceGate.classList.add("hidden");
+    showToast("Окей. Пока без голоса.", 1500);
+  }, { passive: false });
+}
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -427,4 +688,6 @@ if ("serviceWorker" in navigator) {
 setState("idle");
 scheduleBlink();
 scheduleIdle();
-setTimeout(() => showToast("v0.2.0. Двойной тап — голосовая команда.", 2200), 700);
+setTimeout(() => {
+  showToast("v0.2.2. Нажми «Включить голос».", 2200);
+}, 700);
